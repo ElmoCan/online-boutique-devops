@@ -1,0 +1,27 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":0},"id":1,"targets":[{"editorMode":"code","expr":"100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))","legendFormat":"{{instance}}","range":true,"refId":"A"}],"title":"Node CPU Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":0},"id":2,"targets":[{"editorMode":"code","expr":"100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)","legendFormat":"{{instance}}","range":true,"refId":"A"}],"title":"Node Memory Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"cores"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":8},"id":3,"targets":[{"editorMode":"code","expr":"sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\",namespace=~\"$namespace\"}[5m]))","legendFormat":"{{namespace}} / {{pod}}","range":true,"refId":"A"}],"title":"Pod CPU Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"bytes"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":8},"id":4,"targets":[{"editorMode":"code","expr":"sum by (namespace, pod) (container_memory_working_set_bytes{container!=\"\",image!=\"\",namespace=~\"$namespace\"})","legendFormat":"{{namespace}} / {{pod}}","range":true,"refId":"A"}],"title":"Pod Memory Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":16},"id":5,"targets":[{"editorMode":"code","expr":"sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h]))","legendFormat":"{{namespace}} / {{pod}}","range":true,"refId":"A"}],"title":"Pod Restarts (last hour)","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percentunit","min":0,"max":1},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":16},"id":6,"targets":[{"editorMode":"code","expr":"sum by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\"}) / clamp_min(sum by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\"}), 1)","legendFormat":"{{namespace}} / {{deployment}}","range":true,"refId":"A"}],"title":"Deployment Availability","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"cores"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":0,"y":24},"id":7,"targets":[{"editorMode":"code","expr":"sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\",namespace=~\"$namespace\"}[5m]))","legendFormat":"{{namespace}}","range":true,"refId":"A"}],"title":"Namespace CPU Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"bytes"},"overrides":[]},"gridPos":{"h":8,"w":12,"x":12,"y":24},"id":8,"targets":[{"editorMode":"code","expr":"sum by (namespace) (container_memory_working_set_bytes{container!=\"\",image!=\"\",namespace=~\"$namespace\"})","legendFormat":"{{namespace}}","range":true,"refId":"A"}],"title":"Namespace Memory Usage","type":"timeseries"},
+    {"datasource":{"type":"prometheus","uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short","min":0,"max":1},"overrides":[]},"gridPos":{"h":8,"w":24,"x":0,"y":32},"id":9,"targets":[{"editorMode":"code","expr":"kube_pod_container_status_ready{namespace=~\"$namespace\"}","legendFormat":"{{namespace}} / {{pod}} / {{container}}","range":true,"refId":"A"}],"title":"Container Health (1 = ready)","type":"timeseries"}
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["kubernetes", "orbStack"],
+  "templating": {"list": [{"allValue": ".*", "current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(kube_pod_info, namespace)", "includeAll": true, "multi": true, "name": "namespace", "options": [], "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "StandardVariableQuery"}, "refresh": 1, "type": "query"}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Local Kubernetes Overview",
+  "uid": "local-kubernetes-overview",
+  "version": 1
+}
