@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: online-boutique
+resources:
+  - application/upstream/release/kubernetes-manifests.yaml
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: loadgenerator
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      group: ""
+      version: v1
+      kind: Service
+      name: frontend-external
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: ClusterIP
