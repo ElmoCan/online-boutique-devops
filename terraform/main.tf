@@ -7,6 +7,7 @@ module "networking" {
   name               = local.name
   vpc_cidr           = var.vpc_cidr
   availability_zones = var.availability_zones
+  nat_gateway_mode   = var.nat_gateway_mode
   tags               = var.tags
 }
 
@@ -39,3 +40,8 @@ module "github_oidc" {
 output "ecr_repository_url" { value = module.ecr.repository_url }
 output "eks_cluster_name" { value = module.eks.cluster_name }
 output "vpc_id" { value = module.networking.vpc_id }
+output "public_subnet_ids" { value = module.networking.public_subnet_ids }
+output "private_subnet_ids" { value = module.networking.private_subnet_ids }
+output "public_route_table_ids" { value = module.networking.public_route_table_ids }
+output "private_route_table_ids" { value = module.networking.private_route_table_ids }
+output "nat_gateway_ids" { value = module.networking.nat_gateway_ids }

@@ -21,11 +21,15 @@ module "eks" {
   eks_managed_node_groups = {
     general = {
       instance_types = ["t3.large"]
-      min_size       = 3
-      desired_size   = 3
-      max_size       = 6
-      capacity_type  = "ON_DEMAND"
-      labels         = { workload = "general" }
+      subnet_ids     = var.private_subnet_ids
+      network_interfaces = [{
+        associate_public_ip_address = false
+      }]
+      min_size      = 3
+      desired_size  = 3
+      max_size      = 6
+      capacity_type = "ON_DEMAND"
+      labels        = { workload = "general" }
     }
   }
   tags = var.tags

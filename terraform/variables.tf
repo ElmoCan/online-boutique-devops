@@ -1,7 +1,7 @@
 variable "aws_region" {
-  description = "AWS region; Mumbai is ap-south-1."
+  description = "AWS region for the project."
   type        = string
-  default     = "ap-south-1"
+  default     = "us-east-1"
 }
 
 variable "project_name" {
@@ -19,16 +19,26 @@ variable "environment" {
 variable "vpc_cidr" {
   type        = string
   description = "VPC IPv4 range. Must not overlap connected networks."
-  default     = "10.40.0.0/16"
+  default     = "10.0.0.0/16"
 }
 
 variable "availability_zones" {
   type        = number
-  description = "Number of AZs. Production baseline uses three."
-  default     = 3
+  description = "Number of Availability Zones for the VPC. This implementation uses two."
+  default     = 2
   validation {
-    condition     = var.availability_zones >= 2 && var.availability_zones <= 3
-    error_message = "Use two or three Availability Zones."
+    condition     = var.availability_zones == 2
+    error_message = "This VPC implementation requires exactly two Availability Zones."
+  }
+}
+
+variable "nat_gateway_mode" {
+  type        = string
+  description = "Private subnet egress mode: disabled, single NAT Gateway, or one NAT Gateway per AZ."
+  default     = "disabled"
+  validation {
+    condition     = contains(["disabled", "single", "per_az"], var.nat_gateway_mode)
+    error_message = "nat_gateway_mode must be disabled, single, or per_az."
   }
 }
 
