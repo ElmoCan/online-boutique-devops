@@ -67,7 +67,7 @@ Safety decisions carried through the work:
 
 ### 6. AWS VPC Terraform preparation
 
-- Work is on `feature/aws-vpc-networking`; current head at journal time is `7a7a6c387aca35d9c7a7c2188ee306d16b1ce137`. PR #3 is open, targets `main`, and is reported mergeable. GitHub reported no status checks on the implementation commit.
+- Work is on `feature/aws-vpc-networking`; PR #3 is open, targets `main`, and is reported mergeable. GitHub reported no status checks on the Terraform implementation commit.
 - Existing scaffold review found three mismatches: region defaulted to `ap-south-1`, subnet math produced different CIDRs and defaulted to three AZs, and NAT was enabled per AZ automatically. These were corrected in the feature branch.
 - Current Terraform defaults: region `us-east-1`, VPC `10.0.0.0/16`, two AZs, and NAT mode `disabled`. Subnets are public `10.0.1.0/24`, `10.0.2.0/24` and private `10.0.11.0/24`, `10.0.12.0/24`. Public and private subnets get the AWS Load Balancer Controller role tags and the cluster discovery tag. Public IPv4 auto-assignment is off.
 - NAT mode validates `disabled`, `single`, or `per_az`. The disabled default creates no NAT Gateway, Elastic IP, or private default internet-egress route. EKS managed node groups explicitly use only private subnet IDs and disable public IP association.
@@ -76,7 +76,7 @@ Safety decisions carried through the work:
 - Terraform initialization first failed because the shell could not resolve/download the Terraform Registry. Network access was granted for dependency retrieval, after which `terraform init -backend=false` succeeded and produced the committed provider lock file.
 - Validation passed: `terraform fmt -check -recursive` and `terraform validate`. A networking-only plan ran with refresh disabled and `-target=module.networking`; it planned 17 additions for the new VPC/network layer, showed all four CIDRs in `us-east-1a/b`, and showed no NAT Gateway or Elastic IP. It did not include the existing default VPC. The plan is deliberately scoped and is not a full EKS/ECR/IAM plan.
 - Gitleaks is not installed in the local environment. A targeted scan for common AWS keys, GitHub tokens, private-key blocks, and `aws_secret_access_key` patterns found no likely credential matches in the changed implementation files. No credentials were committed.
-- Shell Git push authentication was unavailable in the local execution environment. The branch update was completed through the connected GitHub integration with an expected-head check and `force=false`; the branch was then fetched and local/remote trees were verified equal. PR #3 was updated with scope, validation, and safety notes.
+- Shell Git push authentication was unavailable in the local execution environment. The Terraform branch update was completed through the connected GitHub integration with an expected-head check and `force=false`; a fetch then succeeded and local/remote trees matched. The journal update was also pushed through the integration. A later fetch attempt hit a temporary GitHub DNS failure, so the local remote-tracking ref may lag; the local documentation tree matches the tree SHA returned for the remote commit. PR #3 was updated with scope, validation, and safety notes.
 - No `terraform apply` was run. The Terraform plan can include default network ACL, route table, and security group management for the **new** VPC; this is distinct from changing the account's existing default VPC.
 
 ## Issues encountered and resolutions
@@ -93,6 +93,7 @@ Safety decisions carried through the work:
 | Terraform Registry DNS/network access failed during init | Network access was granted for dependency retrieval; initialization and validation then succeeded. |
 | `jq` and Gitleaks were unavailable | Used Python to inspect the saved plan JSON; ran a targeted credential-pattern scan as a Gitleaks fallback. |
 | Shell Git push had no HTTPS username/credential available | Used the connected GitHub integration for a fast-forward-only ref update, then fetched and compared the local/remote tree. |
+| A later Git fetch could not resolve `github.com` | Confirmed the pushed commit and open PR through the GitHub integration; the local and remote tree SHA matched. Local origin tracking may need a fetch when DNS is available again. |
 
 ## Current status and next work
 
