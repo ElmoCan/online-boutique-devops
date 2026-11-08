@@ -13,7 +13,7 @@
 - The account/region contains one default VPC, `172.31.0.0/16`, with six default `/20` subnets across `us-east-1a` through `us-east-1f`, a main route table with a default route through its Internet Gateway, and the default network ACL. No NAT Gateway or allocated Elastic IP was found.
 - The proposed `10.0.0.0/16` does not overlap the VPCs and subnets observed in this account/region. This check cannot determine whether it overlaps a corporate, VPN, peered, or other network that is not connected to this account.
 - Reported quotas: 5 VPCs per region (one currently present), 200 subnets per VPC, 5 NAT Gateways per AZ, and 5 Elastic IP addresses per region (none currently allocated).
-- The current `main` branch contains Terraform modules under `terraform/`. There is no state backend configuration. The networking module currently enables one NAT Gateway per AZ, defaults to three AZs, generates subnet ranges different from the requested ranges, and the region default is `ap-south-1`.
+- The original `main` branch inspection found Terraform modules under `terraform/` and no state backend. At inspection time the networking module enabled one NAT Gateway per AZ, defaulted to three AZs, generated different subnet ranges, and defaulted to `ap-south-1`. The implementation prepared on this feature branch changes those defaults as detailed below.
 
 Credentials were not read, printed, or added to the repository. The Terraform configuration was inspected from Git; no `terraform init`, `apply`, or AWS configuration change was performed.
 
@@ -53,18 +53,20 @@ The VPC, subnets, route tables, and Internet Gateway have no component-hour char
 
 **Recommendation:** keep NAT disabled by default in Terraform. For a development deployment that requires outbound access from private nodes, explicitly choose one NAT Gateway and accept the AZ dependency/cross-AZ tradeoff. Choose one NAT Gateway per AZ for production availability and local egress. For a no-NAT environment, first mirror required images to ECR and cost the required VPC endpoints; private nodes otherwise lack general outbound access. Do not create NAT automatically.
 
-## Existing Terraform scaffold and implementation plan
+## Terraform scaffold and implementation
 
-The existing networking module uses `terraform-aws-modules/vpc/aws` (`~> 5.0`) and currently calculates public subnet indexes from 0 and private indexes from 10. For the requested layout, make subnet CIDRs explicit (or use public indexes 1/2 and private indexes 11/12) rather than relying on the current offsets. Change the region input default from `ap-south-1` to `us-east-1`, and set the environment to two AZs.
+The networking module uses `terraform-aws-modules/vpc/aws` (`~> 5.0`) and calculates the requested ranges from `/16` subnet indexes 1, 2, 11, and 12. Region defaults to `us-east-1`; this implementation validates exactly two AZs. AWS returns the first two available AZ names for the selected region.
 
-Before implementation, revise the networking module to:
+The feature branch now implements the plan:
 
-1. Accept the approved VPC CIDR, two AZ names, and explicit public/private CIDR lists.
-2. Add a validated NAT mode such as `disabled`, `single`, or `per_az`, with `disabled` as the safe default. Derive NAT routes and NAT resources only from an explicit mode.
-3. Keep VPC DNS support/hostnames enabled, add public/private subnet load-balancer role tags, and keep private nodes unaddressed by public IPv4.
-4. Add outputs for VPC ID, subnet IDs, route-table IDs, and NAT mode/IDs so later EKS modules can consume the network without duplicating resources.
-5. Configure and document a remote Terraform state backend with encryption, versioning, and state locking before the first apply. Do not put credentials or environment-specific secrets in `.tfvars`; use the AWS profile/role chain and non-secret inputs.
-6. Validate with `terraform fmt -check`, `terraform validate`, a reviewed `terraform plan`, CIDR/route assertions, and a secret scan. Inspect the plan for unintended changes to the existing default VPC. Provisioning remains a separate explicit approval step.
+1. The module uses VPC `10.0.0.0/16` and the specified subnet indexes, enables DNS support/hostnames, and disables automatic public IPv4 assignment.
+2. NAT mode is validated as `disabled`, `single`, or `per_az`, defaulting to `disabled`; NAT resources and private egress routes are enabled only by an explicit non-default selection.
+3. Public/private subnet role tags and the future EKS cluster discovery tag are configured. EKS managed nodes consume only private subnet IDs and explicitly disable public IP association.
+4. Root outputs expose the VPC, public/private subnet, route table, and NAT Gateway IDs for later modules.
+5. No remote Terraform backend is configured. Local state is ignored by Git; a shared encrypted/versioned/locked backend remains a separately approved prerequisite before collaborative production use.
+6. Implementation validation is performed with formatting, validation, scoped plan, CIDR/route review, and secret scanning. Provisioning remains a separate explicit approval step.
+
+The implementation files and usage guidance are in [`../terraform/README.md`](../terraform/README.md). The scoped plan must show only a new VPC and its network components, with no changes to the account's existing default VPC. NAT and Elastic IP resources must be absent under the default `disabled` setting.
 
 The existing EKS module is outside this VPC milestone. It currently selects `t3.large` nodes with three desired instances and allows public API access subject to a CIDR input; those choices and their cost/security implications should be reviewed in the EKS milestone.
 
