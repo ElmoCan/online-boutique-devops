@@ -38,7 +38,7 @@ Document SLOs, dashboard/alerts, incident steps, patch/upgrade cadence, image re
 
 ## Current status and approvals needed
 
-- **Repository and PRs:** PR #1 (initial architecture and Terraform scaffold) is merged. PR #2 (local Prometheus/Grafana) is open. PR #3 now contains the AWS VPC plan and Terraform preparation and is open. See the [project journal](project-journal.md) for current branch heads and scope.
+- **Repository and PRs:** PR #1 (initial architecture and Terraform scaffold), PR #2 (local Prometheus/Grafana), and PR #3 (AWS VPC plan and Terraform preparation) have all been reviewed and merged by the owner. See the [project journal](project-journal.md) for the chronology and implementation details.
 - **Upstream and local application:** upstream commit `c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712` is pinned in the local Kubernetes branch. OrbStack Docker access was verified; the owner later reported the Kubernetes API healthy and the application running. Recheck the cluster before resuming local operations.
 - **Monitoring:** local monitoring configuration documents kube-prometheus-stack `93.1.0`, dashboards, and actual metrics limitations. The owner-provided Grafana password is stored only in the Kubernetes Secret and is not in Git.
 - **AWS:** read-only identity, networking, quota, and permission inspection succeeded for `us-east-1`. No AWS configuration or resources were changed.

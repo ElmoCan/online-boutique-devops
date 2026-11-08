@@ -50,7 +50,7 @@ Safety decisions carried through the work:
 
 ### 4. Local monitoring
 
-- Monitoring configuration was committed as `f09e715` on `feature/local-prometheus-grafana`; PR #2, “Add local Prometheus and Grafana monitoring,” is open and reported mergeable as of this journal update.
+- Monitoring configuration was committed as `f09e715` on `feature/local-prometheus-grafana`. The owner reviewed and merged PR #2, “Add local Prometheus and Grafana monitoring,” on 2026-11-08 (merge commit `8092c395d9a947221bc68acc6d670f3a86d821be`).
 - The documented install uses the official `prometheus-community/kube-prometheus-stack` chart version **93.1.0**, in namespace `monitoring`, with single replicas, three-day Prometheus retention, conservative resource settings, and OrbStack `local-path` PVCs (Prometheus 5 GiB, Grafana 1 GiB, Alertmanager 1 GiB).
 - Grafana is kept as a ClusterIP service and accessed with port-forwarding on `localhost:3000`. The admin password is held in a Kubernetes Secret; the password value is not stored in the repository.
 - OrbStack-specific scrape overrides disable etcd, controller-manager, scheduler, and kube-proxy targets that are not exposed as normal targets by this single-node control plane. The documented active targets include the API server, CoreDNS, kubelet/cAdvisor, node exporter, kube-state-metrics, and monitoring stack.
@@ -63,11 +63,11 @@ Safety decisions carried through the work:
 - AWS profile: `devops-practice`; project region: `us-east-1`. AWS CLI authentication and identity were checked without displaying access keys or session tokens. Read-only inventory and IAM permission simulation were performed; no AWS configuration was changed.
 - The account inventory recorded one existing default VPC (`172.31.0.0/16`) with six `/20` subnets, an Internet Gateway, and no NAT Gateways or allocated Elastic IPs. The proposed `10.0.0.0/16` did not overlap the VPC/subnets inspected in that account and region. Corporate, VPN, peered, and other networks outside that inventory still need checking before deployment.
 - Inspection found the current identity had broad permissions. The plan recommends using a dedicated, narrowly scoped role with short-lived credentials for future deployment rather than relying on broad user access.
-- The initial plan is documented in [`aws-milestone-1-vpc-plan.md`](aws-milestone-1-vpc-plan.md). It records the two-AZ CIDR layout, security boundaries, NAT tradeoffs, account findings, and estimated costs. PR #3 was opened for that plan and later updated to include the implementation.
+- The initial plan is documented in [`aws-milestone-1-vpc-plan.md`](aws-milestone-1-vpc-plan.md). It records the two-AZ CIDR layout, security boundaries, NAT tradeoffs, account findings, and estimated costs. PR #3 was opened for that plan, expanded to include the implementation, reviewed and merged by the owner on 2026-11-08 (merge commit `ebd564cb530672bcc4e9f973104b1e80f455b610`).
 
 ### 6. AWS VPC Terraform preparation
 
-- Work is on `feature/aws-vpc-networking`; PR #3 is open, targets `main`, and is reported mergeable. GitHub reported no status checks on the Terraform implementation commit.
+- Work is on `feature/aws-vpc-networking`; PR #3 was merged into `main` after owner review. GitHub reported no status checks on the Terraform implementation commit.
 - Existing scaffold review found three mismatches: region defaulted to `ap-south-1`, subnet math produced different CIDRs and defaulted to three AZs, and NAT was enabled per AZ automatically. These were corrected in the feature branch.
 - Current Terraform defaults: region `us-east-1`, VPC `10.0.0.0/16`, two AZs, and NAT mode `disabled`. Subnets are public `10.0.1.0/24`, `10.0.2.0/24` and private `10.0.11.0/24`, `10.0.12.0/24`. Public and private subnets get the AWS Load Balancer Controller role tags and the cluster discovery tag. Public IPv4 auto-assignment is off.
 - NAT mode validates `disabled`, `single`, or `per_az`. The disabled default creates no NAT Gateway, Elastic IP, or private default internet-egress route. EKS managed node groups explicitly use only private subnet IDs and disable public IP association.
@@ -76,7 +76,7 @@ Safety decisions carried through the work:
 - Terraform initialization first failed because the shell could not resolve/download the Terraform Registry. Network access was granted for dependency retrieval, after which `terraform init -backend=false` succeeded and produced the committed provider lock file.
 - Validation passed: `terraform fmt -check -recursive` and `terraform validate`. A networking-only plan ran with refresh disabled and `-target=module.networking`; it planned 17 additions for the new VPC/network layer, showed all four CIDRs in `us-east-1a/b`, and showed no NAT Gateway or Elastic IP. It did not include the existing default VPC. The plan is deliberately scoped and is not a full EKS/ECR/IAM plan.
 - Gitleaks is not installed in the local environment. A targeted scan for common AWS keys, GitHub tokens, private-key blocks, and `aws_secret_access_key` patterns found no likely credential matches in the changed implementation files. No credentials were committed.
-- Shell Git push authentication was unavailable in the local execution environment. The Terraform branch update was completed through the connected GitHub integration with an expected-head check and `force=false`; a fetch then succeeded and local/remote trees matched. The journal update was also pushed through the integration. A later fetch attempt hit a temporary GitHub DNS failure, so the local remote-tracking ref may lag; the local documentation tree matches the tree SHA returned for the remote commit. PR #3 was updated with scope, validation, and safety notes.
+- Shell Git push authentication was unavailable in the local execution environment. The Terraform branch update was completed through the connected GitHub integration with an expected-head check and `force=false`; a fetch then succeeded and local/remote trees matched. The journal was pushed to the same feature branch after PR #3 had merged, so those follow-up journal corrections are not part of merge commit `ebd564cb530672bcc4e9f973104b1e80f455b610`; they are being submitted separately for review. A later fetch attempt hit a temporary GitHub DNS failure, so the local remote-tracking ref may lag; the local documentation tree matches the tree SHA returned for the remote commit.
 - No `terraform apply` was run. The Terraform plan can include default network ACL, route table, and security group management for the **new** VPC; this is distinct from changing the account's existing default VPC.
 
 ## Issues encountered and resolutions
@@ -93,7 +93,7 @@ Safety decisions carried through the work:
 | Terraform Registry DNS/network access failed during init | Network access was granted for dependency retrieval; initialization and validation then succeeded. |
 | `jq` and Gitleaks were unavailable | Used Python to inspect the saved plan JSON; ran a targeted credential-pattern scan as a Gitleaks fallback. |
 | Shell Git push had no HTTPS username/credential available | Used the connected GitHub integration for a fast-forward-only ref update, then fetched and compared the local/remote tree. |
-| A later Git fetch could not resolve `github.com` | Confirmed the pushed commit and open PR through the GitHub integration; the local and remote tree SHA matched. Local origin tracking may need a fetch when DNS is available again. |
+| A later Git fetch could not resolve `github.com` | Confirmed the pushed commit through the GitHub integration; the local documentation tree matched the returned remote tree SHA. Local origin tracking may need a fetch when DNS is available again. |
 
 ## Current status and next work
 
@@ -104,11 +104,11 @@ Safety decisions carried through the work:
 - Local monitoring configuration and documented target/metric limitations on its feature branch.
 - AWS read-only inspection and VPC architecture document.
 - VPC Terraform preparation, provider lock file, README, formatting/validation, and scoped non-applying plan on `feature/aws-vpc-networking`.
-- PR #1 merged; PR #2 and PR #3 open at the time of this update.
+- PRs #1, #2, and #3 have all been reviewed and merged. The latest journal corrections are being submitted separately because they were pushed after PR #3 merged.
 
 ### Still pending
 
-- Review/merge PR #2 (local monitoring) and PR #3 (VPC planning and Terraform preparation) through the repository's normal review/check policy.
+- Review and merge the documentation follow-up that records PR #2/#3's merged state and the full project history.
 - Recheck local OrbStack cluster and application state when resuming local work; the journal records the earlier reported status, not a live health check.
 - Review and approve the VPC plan and costs before any provisioning. Confirm CIDR compatibility with networks not visible in the account inventory.
 - Choose the exact AZs if deterministic cross-account placement is required.
