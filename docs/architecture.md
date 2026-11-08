@@ -1,6 +1,6 @@
-# Online Boutique on AWS (Mumbai): Phase 0–1 design
+# Initial Online Boutique AWS architecture proposal (original target: Mumbai)
 
-**Status:** Milestone 1 preparation. No AWS resources were created. Terraform has not been initialized, validated, planned, or applied. Target repository `ElmoCan/online-boutique-devops` is public; its existing README is preserved. Upstream source was inspected through GitHub APIs, while direct cloning remains blocked by shell DNS/network restrictions.
+**Status:** This document preserves the initial Phase 0–1 proposal. The project region was later changed to `us-east-1`; current VPC design and Terraform implementation are recorded in [`aws-milestone-1-vpc-plan.md`](aws-milestone-1-vpc-plan.md) and [`../terraform/README.md`](../terraform/README.md). Terraform has since been initialized, formatted, validated, and planned for the networking module only. No AWS resources have been applied or changed. Upstream was pinned and used for the local deployment. See the [project journal](project-journal.md) for the chronology and current status. The Mumbai and three-AZ pricing in this proposal is historical and should not be used as the current estimate.
 
 ## Executive design
 
