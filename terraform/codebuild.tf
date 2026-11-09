@@ -50,7 +50,7 @@ resource "aws_iam_role_policy" "codebuild_deployer" {
       {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = aws_cloudwatch_log_group.codebuild_deployer.arn
+        Resource = "${trimsuffix(aws_cloudwatch_log_group.codebuild_deployer.arn, ":*")}:log-stream:deployment/*"
       },
       {
         Effect   = "Allow"

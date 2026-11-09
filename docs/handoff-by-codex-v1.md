@@ -39,19 +39,18 @@ This is a continuation brief for Gemini AI Pro. Read this file first, then inspe
 - Its first CI run exposed an upstream Go 1.27 vet warning on an unchanged checkoutservice call. The CI step was changed to run `go test -vet=off ./...`; the actual Go unit tests still run and passed. Cartservice .NET tests and Kustomize validation also passed.
 - The first image-build attempt failed because Skaffold was run from the repository root, while its contexts are relative to `application/upstream`. PR #7 fixed the working directory and merged as `5e8f0a1da1c74d3fccc759de87a660e5117f7629`.
 - Main workflow [CI run 42609687121](https://github.com/ElmoCan/online-boutique-devops/actions/runs/42609687121) completed successfully. Its Go tests, cartservice tests, Kustomize render, OIDC role assumption, ECR login, Skaffold build, and image pushes succeeded. Images use immutable tag `5e8f0a1da1c74d3fccc759de87a660e5117f7629`.
-- Deployment workflow [run 42611266598](https://github.com/ElmoCan/online-boutique-devops/actions/runs/42611266598) failed. It authenticated to AWS and successfully started the private CodeBuild project, then observed CodeBuild status `FAILED`. The exact build failure is not known yet. The local AWS CLI could not connect to the CodeBuild regional endpoint to retrieve build phases/log references.
-- Therefore, do **not** claim the application is deployed. The last confirmed state is images pushed to ECR, but CodeBuild deployment failed. Application Pods, Services, Ingress, ALB and frontend access have not been verified after the failure.
+- Deployment workflow [run 42611266598](https://github.com/ElmoCan/online-boutique-devops/actions/runs/42611266598) failed because the CodeBuild role's log permission covered the log group ARN but not its log-stream ARN. Read-only AWS `batch-get-builds` confirmed the exact failure.
+- The least-privilege IAM correction was applied from a fresh full Terraform plan containing only one in-place role-policy update (zero resources added/deleted). A direct CodeBuild retry from the already-built main commit succeeded: `online-boutique-dev-deploy:1cbb4d83-0334-49bc-af80-ab6b8014dd4d`.
+- All 12 application Deployments rolled out successfully, including two frontend replicas. All 13 Pods were Ready with zero restarts at verification. All 12 Services, including `frontend`, `frontend-external`, and `redis-cart`, are ClusterIP.
+- The frontend Ingress provisioned active internet-facing ALB `k8s-onlinebo-frontend-5d3878fd15-1975334738.us-east-1.elb.amazonaws.com` in both public subnets. The target group uses IP targets on port 8080 and health path `/_healthz`; both frontend Pod IP targets reported healthy. A direct HTTP request to `/` returned HTTP 200 (0.44 seconds).
+- A Chrome browser smoke check was blocked by the local browser with `ERR_BLOCKED_BY_CLIENT`; HTTP verification via curl and AWS target-health checks succeeded. There is no HTTPS yet: domain and ACM certificate remain owner prerequisites.
 
-## Exact next steps
+## Remaining work
 
-1. Inspect CodeBuild build `online-boutique-dev-deploy:ce5b23ed-e86b-480d-ae91-d42f6f735fbc` in AWS Console (region `us-east-1`) and open its CloudWatch logs. Determine the first failing build phase and fix only that cause. If AWS API access is available, use read-only `batch-get-builds` and CloudWatch log reads; do not print credentials.
-2. Review `ci/buildspec-deploy.yml`, `scripts/configure-ecr-kustomization.py`, CodeBuild environment variables and source settings in `terraform/codebuild.tf`. Confirm CodeBuild can fetch this repository/submodule and that `AWS_REGION`, `EKS_CLUSTER_NAME`, and ECR image prefix are present.
-3. Check whether the CodeBuild source checkout points to the exact main commit and contains the required manifest, Kustomize overlay, script, and submodule. Do not assume `workflow_run`'s source commit is checked out automatically; the CodeBuild project's GitHub source behavior must be verified.
-4. After the fix, publish through a feature branch and PR, wait for checks, then follow the established merge policy. A successful main CI run should trigger the deployment workflow again.
-5. Verify rollout: Deployments and Pods Ready; health probes passing; Services and endpoints present; all app Services/Redis ClusterIP; no rollout errors or failed events. Inspect logs if anything is unhealthy.
-6. Verify ALB Ingress events and target health. Test the ALB DNS address over HTTP. Confirm only the frontend is reachable publicly and workers stay private.
-7. HTTPS is pending an owner-provided domain and a public ACM certificate in `us-east-1`. No domain/certificate was available in the last inspection; do not invent a hostname or request a certificate without it.
-8. Append verified results, the CodeBuild error and fix, application status, ALB URL, and any cost changes to `docs/project-journal.md` and update the milestone documentation.
+1. Update the project journal with the final deployment and ALB verification results, then commit/push that documentation and the Terraform IAM fix via a feature PR.
+2. Decide whether to add Gitleaks, Trivy, Checkov and SBOM generation to CI; none is wired in yet.
+3. Provide a domain and DNS ownership plan before configuring ACM HTTPS and Route 53. Do not invent a hostname or request a certificate without it.
+4. Review actual AWS costs and shut down the learning environment when the owner requests it. The current platform is live and incurs charges.
 
 ## Repository map
 
