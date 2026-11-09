@@ -1,0 +1,99 @@
+{
+  "uid": "online-boutique-application",
+  "title": "Online Boutique Application",
+  "tags": [
+    "online-boutique",
+    "opentelemetry"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate by service",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service_name) (rate(online_boutique_traces_span_metrics_calls_total[5m]))",
+          "legendFormat": "{{service_name}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error rate by service (%)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (service_name) (rate(online_boutique_traces_span_metrics_calls_total{status_code=~\"(?i).*error.*\"}[5m])) / clamp_min(sum by (service_name) (rate(online_boutique_traces_span_metrics_calls_total[5m])), 1e-9)",
+          "legendFormat": "{{service_name}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "p95 span duration by service",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(online_boutique_traces_span_metrics_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "{{service_name}}",
+          "range": true
+        }
+      ]
+    }
+  ]
+}

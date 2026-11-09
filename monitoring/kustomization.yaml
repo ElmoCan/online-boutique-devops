@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - aws/namespace.yaml
+  - aws/otel-collector.yaml
+  - aws/otel-servicemonitor.yaml
+  - aws/online-boutique-prometheusrule.yaml
+  - dashboards
+configMapGenerator:
+  - name: otel-collector-config
+    namespace: monitoring
+    files:
+      - aws/collector-config.yaml
+  - name: grafana-dashboard-online-boutique-application
+    namespace: monitoring
+    files:
+      - aws/dashboards/online-boutique-application.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+        app.kubernetes.io/part-of: online-boutique-observability
+generatorOptions:
+  disableNameSuffixHash: true

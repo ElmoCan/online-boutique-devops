@@ -1,0 +1,61 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 320
+    spike_limit_mib: 80
+  transform/redact_sensitive_data:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "user.email") where attributes["user.email"] != nil
+          - delete_key(attributes, "user.id") where attributes["user.id"] != nil
+          - delete_key(attributes, "enduser.id") where attributes["enduser.id"] != nil
+          - delete_key(attributes, "http.request.header.authorization") where attributes["http.request.header.authorization"] != nil
+  redaction:
+    allow_all_keys: true
+    blocked_key_patterns:
+      - "password"
+      - "secret"
+      - "token"
+      - "authorization"
+    summary: info
+  batch:
+    timeout: 5s
+
+connectors:
+  span_metrics:
+    aggregation_cardinality_limit: 1000
+    metrics_flush_interval: 15s
+    metrics_expiration: 5m
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    namespace: online_boutique
+    send_timestamps: true
+    enable_open_metrics: true
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/redact_sensitive_data, redaction, batch]
+      exporters: [span_metrics]
+    metrics:
+      receivers: [span_metrics]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

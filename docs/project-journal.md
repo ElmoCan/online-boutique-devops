@@ -37,6 +37,8 @@ Safety decisions carried through the work:
 - The only public application entry point is the ALB on HTTP/80. Its security group permits internet traffic on TCP/80, as expected for the current public storefront. There is no HTTPS listener; adding HTTPS still requires an owner-provided domain and ACM certificate. OrbStack was not modified.
 - PR #9 fixed the CodeBuild CloudWatch log-stream permissions. A full Terraform plan after the policy update reported `No changes`; its saved plan remains outside Git. No AWS credentials, OIDC tokens, kubeconfig contents, or public API `/32` value are stored in Git.
 
+- The operations follow-up is being prepared on a feature branch: pinned kube-prometheus-stack AWS values, an internal OpenTelemetry Collector and dashboards/alerts, a separate frontend HPA overlay with Metrics Server prerequisite, and a guarded manual rollback workflow. These configurations are not deployed; no AWS or Kubernetes resources were changed.
+
 ## Timeline
 
 ### 1. Project and repository setup
@@ -347,3 +349,14 @@ Safety decisions carried through the work:
 - PR #11 validation: application workflow `42659088572` passed Go, .NET cart-service, and Kustomize checks. Security workflow `42659088680` passed Gitleaks, including full reachable history and its ephemeral redaction test. Trivy dependency scanning failed on HIGH/CRITICAL advisories in the pinned upstream source; Checkov failed on 15 findings in the pre-existing Terraform baseline (88 checks passed). Neither gate was weakened. The latest upstream commit check returned the pinned `c7cb6d5` (2026-10-27), so there was no newer source commit to use for a quick vulnerability fix.
 - The upstream cart service selects Redis or Google Spanner; its source has no MySQL client path. Adding a MySQL StatefulSet would leave it unused unless the Google application is forked and modified, which conflicts with keeping the upstream source intact. The existing Redis deployment remains the appropriate cart database.
 - PR #11 remains open and unmerged. The image scan/SBOM job is configured for main-branch ECR images, but was skipped on the PR because no image build/push runs on a PR.
+
+### 13. Operations and observability preparation (2026-11-09)
+
+- Reused the repository's existing kube-prometheus-stack chart pin (`93.1.0`) and dashboard configuration. The AWS values keep Prometheus, Grafana, and Alertmanager as ClusterIP services, disable PVCs, and use short Prometheus retention for this initial nonpersistent setup.
+- Added an opt-in OpenTelemetry Collector configuration based on the official OpenTelemetry Demo collector pattern. It accepts OTLP traces from the seven instrumented Online Boutique services, redacts sensitive span attributes, and derives request/error/latency metrics through `span_metrics`. A ServiceMonitor, application dashboard, and availability/restart alert rules are prepared. The component that points application services at the Collector remains opt-in until the Collector is installed and healthy.
+- Prepared a separate frontend HPA overlay (CPU target 70%, 2–5 replicas) and a pinned EKS Metrics Server add-on input. The live EKS cluster did not have the Metrics API or HPA. Neither the add-on nor HPA was applied.
+- Added a manually dispatched rollback workflow that accepts a full commit SHA, requires successful CI and deployment runs for that SHA, and redeploys through the existing private CodeBuild path. It does not rebuild images or change infrastructure.
+- The existing upstream v0.10.7 release manifests already provide readiness/liveness probes and resource requests/limits for application containers. The AWS overlay already keeps two frontend replicas spread across zones and has a frontend PodDisruptionBudget.
+- No MySQL StatefulSet was added: the upstream cart service uses Redis or Google Spanner and has no MySQL client. No External Secrets Operator or AWS Secrets Manager binding was added because the deployed release has no active secret input or AWS database endpoint; the optional upstream AlloyDB paths are Google-specific and are not enabled. Creating unused secret wiring would grant unnecessary access.
+- Cluster Autoscaler is not configured; the current node group has 3/3/6 minimum/desired/maximum bounds. Enabling autoscaling would require a dedicated scoped IAM policy and cluster-scoped controller RBAC and remains unprepared pending review.
+- Local validation is documented with the branch: Terraform formatting/validation, YAML and JSON parsing, Helm chart rendering with no PVC/Ingress objects, and Kustomize rendering passed. The monitoring stack, HPA, Collector, alerts, and rollback workflow have not been deployed or exercised in AWS. The existing application remains on its current deployment.
