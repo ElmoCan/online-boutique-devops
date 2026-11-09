@@ -1,0 +1,155 @@
+name: Security scans
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Gitleaks repository and history scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan event commit range
+        id: event-scan
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+          GITLEAKS_ENABLE_SUMMARY: 'false'
+
+      - name: Verify secret detection and redaction with an ephemeral synthetic token
+        id: synthetic-test
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d "$RUNNER_TEMP/gitleaks-synthetic.XXXXXX")"
+          report="$RUNNER_TEMP/gitleaks-synthetic-report.json"
+          log="$RUNNER_TEMP/gitleaks-synthetic-scan.log"
+          trap 'rm -rf "$fixture" "$report" "$log"' EXIT
+          synthetic_token="$(python3 - <<'PY'
+          import hashlib
+          seed = b"online-boutique-gitleaks-ci-synthetic-only"
+          payload = "".join(hashlib.sha256(seed + bytes([i])).hexdigest() for i in range(2))[:40]
+          print("ghp_" + payload)
+          PY
+          )"
+          git -C "$fixture" init --quiet
+          git -C "$fixture" config user.name "Gitleaks CI fixture"
+          git -C "$fixture" config user.email "gitleaks-fixture@example.invalid"
+          printf 'token=%s\n' "$synthetic_token" > "$fixture/temporary-fixture.txt"
+          git -C "$fixture" add temporary-fixture.txt
+          git -C "$fixture" commit --quiet -m "temporary synthetic scanner fixture"
+          set +e
+          (cd "$fixture" && gitleaks git --redact=100 --exit-code=1 --no-banner --report-format=json --report-path="$report") >"$log" 2>&1
+          scan_status=$?
+          set -e
+          if [ "$scan_status" -ne 1 ]; then
+            echo "Synthetic Gitleaks test failed; scanner details were suppressed."
+            exit 1
+          fi
+          if grep -Fq "$synthetic_token" "$report" "$log"; then
+            echo "Synthetic Gitleaks test failed because scanner output was not redacted."
+            exit 1
+          fi
+          if ! python3 - "$report" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding="utf-8") as report_file:
+              findings = json.load(report_file)
+          if not findings:
+              raise SystemExit(1)
+          PY
+          then
+            echo "Synthetic Gitleaks test failed; no redacted finding was produced."
+            exit 1
+          fi
+          echo "Synthetic secret detection and output-redaction test passed."
+
+      - name: Scan all reachable Git history
+        id: history-scan
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gitleaks git --redact=100 --exit-code=1 --no-banner --log-opts="--all" . >"$RUNNER_TEMP/gitleaks-history.log" 2>&1
+          result=$?
+          rm -f "$RUNNER_TEMP/gitleaks-history.log"
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          if [ "$result" -eq 0 ]; then
+            echo "Full Git history scan passed."
+          else
+            echo "Full Git history scan failed; scanner details were suppressed to protect potential secret values."
+          fi
+
+      - name: Enforce both Gitleaks scans
+        if: always()
+        env:
+          EVENT_SCAN: ${{ steps.event-scan.outcome }}
+          SYNTHETIC_TEST: ${{ steps.synthetic-test.outcome }}
+          HISTORY_SCAN: ${{ steps.history-scan.outputs.exit_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_SCAN" != success ] || [ "$SYNTHETIC_TEST" != success ] || [ "$HISTORY_SCAN" != 0 ]; then
+            echo "::error::Gitleaks detected a finding or could not complete its scan; details were suppressed."
+            exit 1
+          fi
+
+  trivy-dependencies:
+    name: Trivy dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository and pinned upstream source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Scan application dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: application/upstream
+          version: v0.76.1
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  checkov:
+    name: Checkov Terraform scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan Terraform configuration
+        uses: bridgecrewio/checkov-action@45edc9d8856b664db2ec251f5f8632361f0a67aa # Checkov action commit; CLI 3.4.3
+        with:
+          directory: terraform
+          framework: terraform
+          soft_fail: false
+          quiet: true

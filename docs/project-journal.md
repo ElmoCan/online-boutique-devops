@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 9112)
+Total output lines: 387
+
 # Online Boutique DevOps project journal
 
 **Last updated:** 2026-11-09
@@ -97,58 +100,7 @@ Safety decisions carried through the work:
 | OrbStack Docker socket was blocked by the execution sandbox | Obtained read/connect access for read-only checks; verified engine availability without changing Docker resources. |
 | Kubernetes API initially refused connections | Owner started Kubernetes in OrbStack; later health checks reported the API and node healthy. No cluster restart or settings change was performed by the agent. |
 | ARM64 local node and AMD64 upstream application images | Reused Google's published release images with OrbStack emulation; kept upstream code/manifests intact. Load generator remains disabled because it caused cart probe failures under emulation. |
-| Custom image/build approach was taking too long | Returned to upstream release manifests/images and kept only a small local Kustomize overlay. |
-| Some monitoring images lacked ARM64 variants | Documented a helper for the two pinned official images that need AMD64 emulation; other images use ARM64 variants. |
-| Application metrics are absent in the local Prometheus path | Did not invent metrics or claim application scraping; documented actual target/query limitations and available node/kube-state metrics. |
-| Initial Terraform scaffold did not match the requested region/CIDRs/NAT safety | Updated defaults, exact subnet indexes, two-AZ validation, and explicit validated NAT modes with disabled as default. |
-| Terraform Registry DNS/network access failed during init | Network access was granted for dependency retrieval; initialization and validation then succeeded. |
-| `jq` and Gitleaks were unavailable | Used Python to inspect the saved plan JSON; ran a targeted credential-pattern scan as a Gitleaks fallback. |
-| Shell Git push had no HTTPS username/credential available | Used the connected GitHub integration for a fast-forward-only ref update, then fetched and compared the local/remote tree. |
-| A later Git fetch could not resolve `github.com` | Confirmed the pushed commit through the GitHub integration; the local documentation tree matched the returned remote tree SHA. Local origin tracking may need a fetch when DNS is available again. |
-
-## Current status and next work — 2026-11-09
-
-### Completed or recorded
-
-- Upstream application inspection and local deployment configuration on the local Kubernetes branch.
-- Owner-reported successful local application availability at the start of monitoring work.
-- Local monitoring configuration and documented target/metric limitations on its feature branch.
-- AWS read-only inspection and VPC architecture document.
-- VPC Terraform preparation, remote state, and approved AWS deployment; PRs #1, #2, #3, and #9 are merged.
-- AWS application rollout and public HTTP access through the ALB. The CloudWatch log-stream IAM correction and post-merge deployment run are recorded below.
-
-### Still pending
-
-- Recheck Kubernetes objects when the workstation can resolve/reach the EKS API. During this review, `kubectl` could not resolve the API hostname, so pod, Service, HPA, and live image-tag inspection could not be repeated from this machine.
-- Obtain an owner-provided domain before preparing ACM and HTTPS. The storefront remains publicly reachable over HTTP until that is approved and implemented.
-- Add a documented rollback runbook and decide how failed multi-service rollouts should be recovered.
-- Review event/path filtering so documentation-only main-branch changes do not rebuild every application image and redeploy the workload.
-- Evaluate workload HPA and node autoscaling separately; the managed node group has 3/3/6 min/desired/max bounds, but the repository does not configure an HPA or autoscaler controller.
-
-## Related documentation and implementation
-
-- [AWS architecture](architecture.md)
-- [Implementation roadmap](implementation-plan.md)
-- [AWS VPC inspection and plan](aws-milestone-1-vpc-plan.md)
-- [Terraform usage, inputs, outputs, costs, and state](../terraform/README.md)
-- [Local Kubernetes deployment commit](https://github.com/ElmoCan/online-boutique-devops/commit/2b9644f)
-- [Local monitoring PR #2](https://github.com/ElmoCan/online-boutique-devops/pull/2)
-- [AWS VPC preparation PR #3](https://github.com/ElmoCan/online-boutique-devops/pull/3)
-
-### 6. AWS Milestone 5: ALB Ingress preparation (2026-11-08)
-
-- Read-only AWS checks confirmed the `online-boutique-dev` EKS control plane is
-  ACTIVE on Kubernetes 1.36, the managed node group is ACTIVE with three
-  healthy `c7i-flex.large` EC2 instances, and the two public ALB subnets have
-  the required discovery tags and Internet Gateway route. Nodes remain in the
-  two private subnets with public IP assignment disabled and use the existing
-  single NAT Gateway for egress.
-- The local workstation could not reach the EKS Kubernetes API because its
-  current egress address is outside the API endpoint's restricted `/32`.
-  Therefore application Services, pods, Kubernetes node readiness, and any
-  current Ingress could not be verified live. No EKS endpoint CIDR was changed.
-- The public upstream Online Boutique v0.10.7 release manifest contains both
-  `frontend` (`ClusterIP`) and `frontend-external` (`LoadBalancer`). A new
+| Custom ima…1112 tokens truncated…nal` (`LoadBalancer`). A new
   Kustomize overlay keeps the latter private, adds an IP-target ALB Ingress,
   sets two frontend replicas with zone/host spread, and adds a frontend PDB.
   The upstream source remains unchanged.
@@ -356,3 +308,42 @@ Safety decisions carried through the work:
   not resolve the EKS API hostname. No Kubernetes writes or AWS resource changes
   were made. AWS target health and the external HTTP check still confirmed the
   frontend was serving traffic at review time.
+
+### 11. DevSecOps and CI path-filter preparation (2026-11-09)
+
+- Started branch `feature/devsecops-cicd` from the merged main commit after PR
+  #10. The worktree is isolated from the other local checkout and the pinned
+  Google upstream submodule is intact.
+- Added a separate security workflow for pinned Gitleaks, Trivy dependency
+  scanning, and Checkov Terraform scanning. Gitleaks scans event commits and
+  all fetched repository history; CI disables its finding comments, SARIF
+  artifact and summary, and suppresses full-history scanner output so detected
+  secret values cannot be copied into CI logs. An ephemeral synthetic-token
+  check verifies detection and output redaction without adding a credential to
+  this repository. This does not scan the upstream submodule's internal
+  history.
+- Added an image-scan/SBOM job after the existing Skaffold ECR push. It selects
+  only application images referenced by Google's release manifest, scans the
+  immutable commit-SHA ECR tags, and retains CycloneDX SBOM artifacts for seven
+  days. A failed image scan prevents the existing `workflow_run` deploy trigger
+  from starting CodeBuild.
+- Narrowed only the `main` push trigger for `CI and ECR build` to app/deployment
+  inputs. Pull requests still run the full existing application tests and
+  Kustomize validation. The security workflow remains active on all PRs and
+  `main` pushes, including documentation-only changes.
+- The implementation and documentation are still local to this feature branch;
+  they have not been committed, pushed, merged, or deployed. Workflow execution,
+  local CLI scans, secret-safe synthetic validation, and current EKS API
+  reachability still need validation. No AWS or Kubernetes resources were
+  changed.
+- Full details and local commands are in [DevSecOps checks](devsecops.md).
+
+
+### 12. Live-state and DevSecOps check results (2026-11-09)
+
+- Read-only AWS inspection succeeded with the `devops-practice` profile in `us-east-1`. EKS `online-boutique-dev` is ACTIVE on Kubernetes 1.36; its managed group is ACTIVE with three `c7i-flex.large` nodes at min/desired/max 3/3/6. A temporary kubeconfig was created under `/tmp` for inspection and removed afterward; the saved user kubeconfig and OrbStack context were not changed.
+- All three EKS nodes were Ready with private addresses and no external IP. All 13 Online Boutique pods were Running/Ready, including two frontend replicas; the 12 application Services were ClusterIP. The existing frontend Ingress still resolved to the public HTTP ALB, and a live request to `/` returned HTTP 200. No Kubernetes or AWS resources were changed.
+- No `monitoring` namespace, Metrics API, or HPA exists in the live cluster. The only reported StorageClass is `gp2` (AWS EBS CSI); no PVC or monitoring workload was installed. HPA preparation therefore needs a Metrics Server component, and persistent monitoring/database volumes must be reviewed before deployment.
+- PR #11 validation: application workflow `42659088572` passed Go, .NET cart-service, and Kustomize checks. Security workflow `42659088680` passed Gitleaks, including full reachable history and its ephemeral redaction test. Trivy dependency scanning failed on HIGH/CRITICAL advisories in the pinned upstream source; Checkov failed on 15 findings in the pre-existing Terraform baseline (88 checks passed). Neither gate was weakened. The latest upstream commit check returned the pinned `c7cb6d5` (2026-10-27), so there was no newer source commit to use for a quick vulnerability fix.
+- The upstream cart service selects Redis or Google Spanner; its source has no MySQL client path. Adding a MySQL StatefulSet would leave it unused unless the Google application is forked and modified, which conflicts with keeping the upstream source intact. The existing Redis deployment remains the appropriate cart database.
+- PR #11 remains open and unmerged. The image scan/SBOM job is configured for main-branch ECR images, but was skipped on the PR because no image build/push runs on a PR.

@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths:
+      - 'application/upstream/**'
+      - 'kubernetes/aws/online-boutique/**'
+      - 'ci/buildspec-deploy.yml'
+      - 'scripts/configure-ecr-kustomization.py'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
@@ -13,13 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out project and pinned upstream source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.1'
 
@@ -62,9 +68,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      ecr_registry: ${{ steps.ecr.outputs.registry }}
+      image_names: ${{ steps.image-list.outputs.image_names }}
     steps:
       - name: Check out project and pinned upstream source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
@@ -77,12 +86,35 @@ jobs:
           allowed-account-ids: '471623014584'
 
       - name: Authenticate Docker to ECR
+        id: ecr
         run: |
           set -euo pipefail
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           ECR_REGISTRY="${account_id}.dkr.ecr.us-east-1.amazonaws.com"
           echo "ECR_DEFAULT_REPO=${ECR_REGISTRY}/online-boutique-dev" >> "$GITHUB_ENV"
+          echo "registry=${ECR_REGISTRY}" >> "$GITHUB_OUTPUT"
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: List application images used by the release manifest
+        id: image-list
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+
+          manifest = Path("application/upstream/release/kubernetes-manifests.yaml").read_text()
+          prefix = "us-central1-docker.pkg.dev/online-boutique-ci/microservices-demo/"
+          images = sorted({
+              match.group(1)
+              for match in re.finditer(r"(?m)^\s*image:\s*" + re.escape(prefix) + r"([^:\s]+):[^\s]+", manifest)
+          })
+          if not images:
+              raise SystemExit("No upstream application images found in the release manifest")
+          print("image_names=" + json.dumps(images))
+          PY
 
       - name: Install pinned Skaffold
         run: |
@@ -101,3 +133,57 @@ jobs:
             --default-repo "$ECR_DEFAULT_REPO" \
             --tag "$GITHUB_SHA" \
             --disable-multi-platform-build
+
+  scan-images-and-generate-sbom:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.build-and-push.outputs.image_names) }}
+    steps:
+      - name: Assume the repository-scoped AWS role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::471623014584:role/online-boutique-dev-github-actions' }}
+          aws-region: us-east-1
+          allowed-account-ids: '471623014584'
+
+      - name: Scan immutable ECR image and create CycloneDX SBOM
+        id: trivy-image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ needs.build-and-push.outputs.ecr_registry }}/online-boutique-dev/${{ matrix.image }}:${{ github.sha }}
+          version: v0.76.1
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: cyclonedx
+          output: ${{ runner.temp }}/${{ matrix.image }}-${{ github.sha }}.cdx.json
+          hide-progress: true
+
+      - name: Retain image SBOM
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.image }}-${{ github.sha }}
+          path: ${{ runner.temp }}/${{ matrix.image }}-${{ github.sha }}.cdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce image scan result
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.trivy-image.outcome }}
+        run: |
+          if [ "$SCAN_OUTCOME" != success ]; then
+            echo "::error::Trivy image scan failed or found a HIGH/CRITICAL vulnerability with an available fix."
+            exit 1
+          fi
