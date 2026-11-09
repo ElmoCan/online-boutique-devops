@@ -47,6 +47,12 @@ variable "eks_cluster_version" {
   description = "EKS Kubernetes version selected after checking AWS support and application compatibility. Required to avoid a stale version default."
 }
 
+variable "eks_node_instance_type" {
+  description = "EC2 instance type for private EKS worker nodes. c7i-flex.large was previously verified in this account."
+  type        = string
+  default     = "c7i-flex.large"
+}
+
 variable "cluster_endpoint_public_access_cidrs" {
   type        = list(string)
   description = "Trusted IPv4 CIDRs allowed to reach the public EKS API endpoint. Do not use 0.0.0.0/0."
@@ -59,13 +65,25 @@ variable "cluster_endpoint_public_access_cidrs" {
 variable "github_owner" {
   type        = string
   description = "GitHub owner or organization allowed to assume the CI role. Set before deployment."
-  default     = "REPLACE_ME"
+  default     = "ElmoCan"
+}
+
+variable "github_owner_id" {
+  type        = string
+  description = "Immutable GitHub numeric owner ID used in GitHub OIDC subject claims."
+  default     = "135598223"
 }
 
 variable "github_repository" {
   type        = string
   description = "Exact GitHub repository allowed to assume the CI role. Set before deployment."
-  default     = "REPLACE_ME"
+  default     = "online-boutique-devops"
+}
+
+variable "github_repository_id" {
+  type        = string
+  description = "Immutable GitHub numeric repository ID used in GitHub OIDC subject claims."
+  default     = "1450199615"
 }
 
 variable "tags" {

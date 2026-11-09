@@ -1,0 +1,55 @@
+name: Deploy Online Boutique
+
+on:
+  workflow_run:
+    workflows: ["CI and ECR build"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: online-boutique-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assume the repository-scoped AWS role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::471623014584:role/online-boutique-dev-github-actions' }}
+          aws-region: us-east-1
+
+      - name: Start the private VPC deployment build
+        id: start
+        env:
+          PROJECT_NAME: ${{ vars.CODEBUILD_DEPLOY_PROJECT || 'online-boutique-dev-deploy' }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          build_id="$(aws codebuild start-build \
+            --project-name "$PROJECT_NAME" \
+            --source-version "$SOURCE_COMMIT" \
+            --query 'build.id' --output text)"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment and report result
+        env:
+          BUILD_ID: ${{ steps.start.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          while true; do
+            status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" \
+              --query 'builds[0].buildStatus' --output text)"
+            echo "CodeBuild deployment status: $status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+              *) sleep 15 ;;
+            esac
+          done

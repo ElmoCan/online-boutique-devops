@@ -1,6 +1,6 @@
 # Online Boutique DevOps project journal
 
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-09
 
 **Repository:** [`ElmoCan/online-boutique-devops`](https://github.com/ElmoCan/online-boutique-devops)
 **Purpose:** Keep a chronological record of decisions, implementation, verification, blockers, and fixes. This journal distinguishes work committed in the repository from work reported by the project owner and from future plans.
@@ -9,19 +9,28 @@
 
 Build a production-oriented DevOps implementation around Google's Online Boutique while keeping Google's source repository unchanged. The application source of truth is [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo); this repository holds project documentation and DevOps configuration.
 
-The work has moved through two scopes:
+The work has moved through three scopes:
 
 1. **Local development:** run the upstream application on OrbStack Kubernetes, add local Prometheus/Grafana, and document the workflow.
-2. **AWS preparation:** inspect AWS read-only, plan a VPC, and prepare Terraform without provisioning resources.
+2. **AWS preparation and teardown:** inspect AWS, design the platform, deploy the approved learning environment, then destroy project resources while preserving state and project artifacts.
+3. **AWS redeployment:** rebuild the approved EKS environment and prepare an upstream-based CI/CD deployment path.
 
 Safety decisions carried through the work:
 
 - Do not modify Google's upstream source.
 - Keep local and cloud configurations in the DevOps repository.
 - Use OrbStack port-forwarding for local access; do not expose the local app or Grafana publicly.
-- Do not perform AWS provisioning without a separate approval. No `terraform apply` has been run and no AWS resources have been created or modified.
+- Provisioning is performed only after explicit project-owner approval. The former learning environment was destroyed; a later approved redeployment is now live.
 - Do not store AWS credentials, Grafana passwords, or other secrets in Git.
 - Keep the load generator off by default on the resource-constrained local ARM64 cluster.
+
+## Current status snapshot — 2026-11-09
+
+- The previous AWS learning environment was destroyed in the documented teardown milestone (61 Terraform resources). The project VPC, EKS cluster, NAT Gateway, ECR, and related resources were subsequently recreated after the owner asked to continue deployment. The original default VPC and unrelated S3 bucket remain out of scope.
+- Current approved platform: EKS `online-boutique-dev` in `us-east-1`, Kubernetes 1.36, three private `c7i-flex.large` workers across two AZs, project VPC `10.0.0.0/16`, one NAT Gateway, and a restricted public EKS endpoint. The cluster and workers were observed ACTIVE/Ready during this implementation. OrbStack was not modified.
+- The EKS node group, VPC, ECR repositories, GitHub OIDC role, CodeBuild private deploy runner, EBS CSI, and AWS Load Balancer Controller 3.6.2 are provisioned. Controller pods are Ready. The dedicated `online-boutique` namespace and deployer RBAC are present.
+- The application itself has **not yet been deployed to AWS** and no ALB exists. The next action is to publish and run the GitHub Actions workflow, which builds upstream images and uses a private VPC deployment runner. HTTPS still needs an owner-provided domain and ACM certificate.
+- The implementation branch is being validated. No AWS keys, OIDC tokens, kubeconfig contents, or public API `/32` value are stored in Git. Detailed CI/CD, live infrastructure, and ALB/Ingress work is recorded in the milestone documents below.
 
 ## Timeline
 
@@ -224,3 +233,40 @@ Safety decisions carried through the work:
   manifests, documentation and all pre-existing uncommitted Milestone 5 changes
   were preserved. Nothing was committed or pushed. The saved applied plan and
   its readable report remain outside Git under `/private/tmp/ob-dev-destroy.vvjjsd/`.
+
+### 8. Approved AWS platform redeployment and CI/CD preparation (2026-11-09)
+
+- After the owner resumed deployment, bootstrapped the project's encrypted,
+  versioned S3 Terraform state bucket with public access blocked and TLS-only
+  access. Root Terraform now uses S3 native state locking. The bootstrap state
+  and prior destroy-state archive remain preserved.
+- A fresh full Terraform plan created the approved platform; apply completed
+  with 78 additions, zero changes and zero deletions. The project VPC,
+  two-AZ public/private subnets, one NAT Gateway, EKS 1.36, three private
+  `c7i-flex.large` workers, IAM/OIDC, ECR, EBS CSI and private CodeBuild deploy
+  runner are active. A follow-up plan created 12 service ECR repositories and
+  lifecycle policies and updated two CI/IAM resources. No default-VPC changes.
+- Verified all three EKS nodes Ready, EBS CSI ACTIVE, core system pods Running,
+  private-only node addressing, and project subnet tags for the load balancer
+  controller. Existing public API access remains constrained to the operator's
+  `/32`; that value is not committed.
+- Installed AWS Load Balancer Controller chart/application version 3.6.2 using
+  its dedicated IRSA role. Both replicas are Ready. The dedicated namespace,
+  namespace-scoped deployer RBAC and frontend Ingress/PDB overlays are prepared;
+  no application deployment or ALB exists yet.
+- Added GitHub Actions workflows for upstream tests, Kustomize rendering,
+  commit-tagged Skaffold image builds and ECR push; a `workflow_run` workflow
+  starts the private CodeBuild deployment runner after successful main CI.
+  Upstream application source and manifests are consumed from the pinned Git
+  submodule; no upstream files were changed. The local Docker daemon is
+  unavailable, and Go/.NET runtimes are not installed, so image builds and
+  application tests must run in GitHub Actions.
+- Local validation: Terraform format/validate, Actionlint 1.7.12, Ruby YAML
+  parse, Kustomize rendering (12 ClusterIP Services), Python bytecode compile,
+  and `git diff --check` passed. Gitleaks is not installed locally. Workflow
+  execution, GitHub OIDC assumption, image push, Kubernetes rollout and ALB
+  creation remain pending publication and successful CI. No credentials or
+  secret values are stored in the repository.
+- Estimated platform spend at the current node size is approximately
+  `$302/month` before traffic, NAT data processing, log ingestion, image
+  storage, ALB and monitoring charges. Cost estimates are not a billing quote.
