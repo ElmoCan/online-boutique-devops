@@ -1,0 +1,36 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: online-boutique-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/part-of: online-boutique-observability
+spec:
+  groups:
+    - name: online-boutique-availability
+      rules:
+        - alert: OnlineBoutiqueDeploymentUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="online-boutique"} < kube_deployment_spec_replicas{namespace="online-boutique"}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Online Boutique deployment has unavailable replicas
+            description: "Deployment {{ $labels.deployment }} has fewer ready replicas than desired for at least 5 minutes."
+        - alert: OnlineBoutiquePodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="online-boutique"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Online Boutique container is restarting repeatedly
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} restarted more than 3 times in 15 minutes."
+        - alert: OnlineBoutiqueFrontendUnavailable
+          expr: sum(kube_deployment_status_replicas_available{namespace="online-boutique",deployment="frontend"}) < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Online Boutique frontend has no ready replicas
+            description: The frontend Deployment has no available replicas for at least 2 minutes.

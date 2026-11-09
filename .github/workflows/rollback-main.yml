@@ -1,0 +1,86 @@
+name: Rollback Online Boutique
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full SHA of a previously successful main deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: online-boutique-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate previously deployed commit
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$SOURCE_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "source_commit must be a full 40-character Git SHA."
+            exit 1
+          fi
+          git cat-file -e "${SOURCE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
+          ci_runs="$(gh run list --workflow ci.yml --commit "$SOURCE_COMMIT" --status success --limit 1 --json databaseId --jq 'length')"
+          deploy_runs="$(gh run list --workflow deploy-main.yml --commit "$SOURCE_COMMIT" --status success --limit 1 --json databaseId --jq 'length')"
+          if [ "$ci_runs" -lt 1 ] || [ "$deploy_runs" -lt 1 ]; then
+            echo "Commit must have successful CI and deployment workflow runs."
+            exit 1
+          fi
+          echo "Validated previously deployed commit ${SOURCE_COMMIT}."
+
+      - name: Assume the repository-scoped AWS role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::471623014584:role/online-boutique-dev-github-actions' }}
+          aws-region: us-east-1
+          allowed-account-ids: '471623014584'
+
+      - name: Start private CodeBuild rollback deployment
+        id: start
+        env:
+          PROJECT_NAME: ${{ vars.CODEBUILD_DEPLOY_PROJECT || 'online-boutique-dev-deploy' }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          build_id="$(aws codebuild start-build \
+            --project-name "$PROJECT_NAME" \
+            --source-version "$SOURCE_COMMIT" \
+            --query 'build.id' --output text)"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for rollback and report result
+        env:
+          BUILD_ID: ${{ steps.start.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          while true; do
+            status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" \
+              --query 'builds[0].buildStatus' --output text)"
+            echo "CodeBuild rollback status: $status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+              *) sleep 15 ;;
+            esac
+          done

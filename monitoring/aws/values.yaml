@@ -1,0 +1,23 @@
+# AWS EKS overrides layered on top of ../values.yaml.
+# Keep this learning deployment nonpersistent until EBS persistence is separately approved.
+grafana:
+  service:
+    type: ClusterIP
+  persistence:
+    enabled: false
+
+prometheus:
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    retention: 3d
+    retentionSize: 2GiB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    storageSpec: null
+
+alertmanager:
+  service:
+    type: ClusterIP
+  alertmanagerSpec:
+    storage: null

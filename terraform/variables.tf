@@ -93,3 +93,9 @@ variable "tags" {
     ManagedBy = "terraform"
   }
 }
+
+variable "metrics_server_addon_version" {
+  description = "EKS Metrics Server add-on version compatible with the selected Kubernetes version."
+  type        = string
+  default     = "v0.9.0-eksbuild.14"
+}
