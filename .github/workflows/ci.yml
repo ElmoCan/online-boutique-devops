@@ -93,10 +93,11 @@ jobs:
           skaffold version
 
       - name: Build upstream images and push immutable commit tags
+        working-directory: application/upstream
         run: |
           set -euo pipefail
           skaffold build \
-            --filename application/upstream/skaffold.yaml \
+            --filename skaffold.yaml \
             --default-repo "$ECR_DEFAULT_REPO" \
             --tag "$GITHUB_SHA" \
             --disable-multi-platform-build
