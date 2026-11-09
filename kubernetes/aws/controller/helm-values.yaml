@@ -1,0 +1,25 @@
+clusterName: online-boutique-dev
+region: us-east-1
+vpcId: vpc-0ab0f642821a4c72c
+
+# Use the separately managed IRSA ServiceAccount and role.
+serviceAccount:
+  create: false
+  name: aws-load-balancer-controller
+
+replicaCount: 2
+podDisruptionBudget:
+  maxUnavailable: 1
+configureDefaultAffinity: true
+
+# This project creates an ALB only from Ingress resources. Do not make the
+# controller the default for unrelated type=LoadBalancer Services.
+enableServiceMutatorWebhook: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

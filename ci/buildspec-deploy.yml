@@ -1,0 +1,23 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - git submodule update --init --recursive
+      - curl -fsSLo kubectl https://dl.k8s.io/release/v1.36.0/bin/linux/amd64/kubectl
+      - curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.36.0/bin/linux/amd64/kubectl.sha256
+      - echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+      - install -m 0755 kubectl /usr/local/bin/kubectl
+  pre_build:
+    commands:
+      - cp application/upstream/release/kubernetes-manifests.yaml kubernetes/aws/online-boutique/upstream-manifests.generated.yaml
+      - account_id="$(aws sts get-caller-identity --query Account --output text)"
+      - export ECR_REPOSITORY_PREFIX="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com/${EKS_CLUSTER_NAME}"
+      - python3 scripts/configure-ecr-kustomization.py
+      - aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+      - kubectl version --client
+  build:
+    commands:
+      - kubectl apply -k kubernetes/aws/online-boutique
+      - kubectl get deployments,services,endpoints -n online-boutique
+      - for deployment in $(kubectl get deployments -n online-boutique -o name); do kubectl rollout status -n online-boutique "$deployment" --timeout=10m; done

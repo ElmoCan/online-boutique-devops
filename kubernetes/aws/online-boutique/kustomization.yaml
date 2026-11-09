@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: online-boutique
+resources:
+  - upstream-manifests.generated.yaml
+  - ingress.yaml
+  - frontend-pdb.yaml
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: frontend
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: topology.kubernetes.io/zone
+                whenUnsatisfiable: DoNotSchedule
+                labelSelector:
+                  matchLabels:
+                    app: frontend
+              - maxSkew: 1
+                topologyKey: kubernetes.io/hostname
+                whenUnsatisfiable: ScheduleAnyway
+                labelSelector:
+                  matchLabels:
+                    app: frontend
+  # The upstream release ships frontend-external as LoadBalancer. Keep it
+  # private; the Ingress below is the only public entry point.
+  - target:
+      version: v1
+      kind: Service
+      name: frontend-external
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend-external
+      spec:
+        type: ClusterIP
