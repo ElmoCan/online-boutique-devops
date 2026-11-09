@@ -270,3 +270,34 @@ Safety decisions carried through the work:
 - Estimated platform spend at the current node size is approximately
   `$302/month` before traffic, NAT data processing, log ingestion, image
   storage, ALB and monitoring charges. Cost estimates are not a billing quote.
+
+### 9. CI image build and private deployment troubleshooting (2026-11-09)
+
+- Main CI run `42609687121` passed upstream Go tests, Cartservice .NET tests,
+  and Kustomize validation. GitHub OIDC role assumption and ECR login worked;
+  Skaffold built and pushed commit-tagged upstream images to ECR.
+- The subsequent CodeBuild deployment run `42611266598` started the configured
+  private build but failed in the QUEUED phase before source download. Read-only
+  `batch-get-builds` identified the cause: the CodeBuild role's CloudWatch
+  resource ARN covered only the log group, while `logs:CreateLogStream` and
+  `logs:PutLogEvents` require the log-stream ARN. No application objects or ALB
+  were created by that failed run.
+- Updated the CodeBuild role policy to scope `logs:CreateLogStream` and
+  `logs:PutLogEvents` to `deployment/*` streams under the existing log group.
+  A fresh full Terraform plan showed only one in-place role-policy update
+  (zero additions/deletions); apply completed with exactly that change.
+- Started a new CodeBuild run from the already-built main commit. Its submitted
+  and queued phases succeeded; the build then applied manifests and completed
+  successfully. Build ID:
+  `online-boutique-dev-deploy:1cbb4d83-0334-49bc-af80-ab6b8014dd4d`.
+- Verified all 12 Deployments rolled out, including frontend `2/2`; all 13 Pods
+  were Running/Ready with zero restarts. All 12 app Services are ClusterIP.
+  Initial 1-second probe timeouts during startup recovered; the final pod
+  readiness checks passed.
+- The frontend Ingress reconciled to active internet-facing ALB
+  `k8s-onlinebo-frontend-5d3878fd15-1975334738.us-east-1.elb.amazonaws.com`
+  in both public AZ subnets. Its target group is IP mode on port 8080 with
+  `/_healthz`; both frontend targets are healthy. `curl` returned HTTP 200 for
+  `/`. The browser tool was blocked by a local client extension, so the website
+  was not visually inspected in Chrome.
+- No HTTPS listener exists. Domain and ACM certificate remain prerequisites.
