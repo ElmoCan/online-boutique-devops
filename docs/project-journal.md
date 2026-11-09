@@ -29,8 +29,10 @@ Safety decisions carried through the work:
 - The previous AWS learning environment was destroyed in the documented teardown milestone (61 Terraform resources). The project VPC, EKS cluster, NAT Gateway, ECR, and related resources were subsequently recreated after the owner asked to continue deployment. The original default VPC and unrelated S3 bucket remain out of scope.
 - Current approved platform: EKS `online-boutique-dev` in `us-east-1`, Kubernetes 1.36, three private `c7i-flex.large` workers across two AZs, project VPC `10.0.0.0/16`, one NAT Gateway, and a restricted public EKS endpoint. The cluster and workers were observed ACTIVE/Ready during this implementation. OrbStack was not modified.
 - The EKS node group, VPC, ECR repositories, GitHub OIDC role, CodeBuild private deploy runner, EBS CSI, and AWS Load Balancer Controller 3.6.2 are provisioned. Controller pods are Ready. The dedicated `online-boutique` namespace and deployer RBAC are present.
-- The application itself has **not yet been deployed to AWS** and no ALB exists. The next action is to publish and run the GitHub Actions workflow, which builds upstream images and uses a private VPC deployment runner. HTTPS still needs an owner-provided domain and ACM certificate.
-- The implementation branch is being validated. No AWS keys, OIDC tokens, kubeconfig contents, or public API `/32` value are stored in Git. Detailed CI/CD, live infrastructure, and ALB/Ingress work is recorded in the milestone documents below.
+- Google Online Boutique v0.10.7 is deployed in namespace `online-boutique`. The post-merge pipeline completed successfully (GitHub Actions run `42616144276`); the rollout previously verified 12/12 Deployments, 13/13 Pods Ready, and frontend 2/2. The active public ALB currently has two healthy IP targets and returned HTTP 200 for `/` during the 2026-11-09 review.
+- Current read-only AWS inspection found EKS `online-boutique-dev` ACTIVE on Kubernetes 1.36, its managed node group ACTIVE at 3 desired `c7i-flex.large` workers (min 3, max 6), one available NAT Gateway, and an active internet-facing ALB in both public subnets. Worker instances have private addresses. The EKS public API allowlist is restricted to a single `/32`; its value is intentionally not recorded here.
+- The only public application entry point is the ALB on HTTP/80. Its security group permits internet traffic on TCP/80, as expected for the current public storefront. There is no HTTPS listener; adding HTTPS still requires an owner-provided domain and ACM certificate. OrbStack was not modified.
+- PR #9 fixed the CodeBuild CloudWatch log-stream permissions. A full Terraform plan after the policy update reported `No changes`; its saved plan remains outside Git. No AWS credentials, OIDC tokens, kubeconfig contents, or public API `/32` value are stored in Git.
 
 ## Timeline
 
@@ -104,7 +106,7 @@ Safety decisions carried through the work:
 | Shell Git push had no HTTPS username/credential available | Used the connected GitHub integration for a fast-forward-only ref update, then fetched and compared the local/remote tree. |
 | A later Git fetch could not resolve `github.com` | Confirmed the pushed commit through the GitHub integration; the local documentation tree matched the returned remote tree SHA. Local origin tracking may need a fetch when DNS is available again. |
 
-## Current status and next work
+## Current status and next work — 2026-11-09
 
 ### Completed or recorded
 
@@ -112,17 +114,16 @@ Safety decisions carried through the work:
 - Owner-reported successful local application availability at the start of monitoring work.
 - Local monitoring configuration and documented target/metric limitations on its feature branch.
 - AWS read-only inspection and VPC architecture document.
-- VPC Terraform preparation, provider lock file, README, formatting/validation, and scoped non-applying plan on `feature/aws-vpc-networking`.
-- PRs #1, #2, and #3 have all been reviewed and merged. The latest journal corrections are being submitted separately because they were pushed after PR #3 merged.
+- VPC Terraform preparation, remote state, and approved AWS deployment; PRs #1, #2, #3, and #9 are merged.
+- AWS application rollout and public HTTP access through the ALB. The CloudWatch log-stream IAM correction and post-merge deployment run are recorded below.
 
 ### Still pending
 
-- Review and merge the documentation follow-up that records PR #2/#3's merged state and the full project history.
-- Recheck local OrbStack cluster and application state when resuming local work; the journal records the earlier reported status, not a live health check.
-- Review and approve the VPC plan and costs before any provisioning. Confirm CIDR compatibility with networks not visible in the account inventory.
-- Choose the exact AZs if deterministic cross-account placement is required.
-- Design and separately approve shared Terraform state, EKS access/security, least-privilege deployment role, cost controls, and required private-subnet egress/endpoints.
-- Run a full Terraform plan only after all required EKS/OIDC inputs are deliberately set. Any `terraform apply` remains a separate approval step.
+- Recheck Kubernetes objects when the workstation can resolve/reach the EKS API. During this review, `kubectl` could not resolve the API hostname, so pod, Service, HPA, and live image-tag inspection could not be repeated from this machine.
+- Obtain an owner-provided domain before preparing ACM and HTTPS. The storefront remains publicly reachable over HTTP until that is approved and implemented.
+- Add a documented rollback runbook and decide how failed multi-service rollouts should be recovered.
+- Review event/path filtering so documentation-only main-branch changes do not rebuild every application image and redeploy the workload.
+- Evaluate workload HPA and node autoscaling separately; the managed node group has 3/3/6 min/desired/max bounds, but the repository does not configure an HPA or autoscaler controller.
 
 ## Related documentation and implementation
 
@@ -301,3 +302,57 @@ Safety decisions carried through the work:
   `/`. The browser tool was blocked by a local client extension, so the website
   was not visually inspected in Chrome.
 - No HTTPS listener exists. Domain and ACM certificate remain prerequisites.
+
+### 10. Post-deployment review and journal correction (2026-11-09)
+
+- PR #9 merged the least-privilege CodeBuild CloudWatch fix: `logs:CreateLogStream`
+  and `logs:PutLogEvents` are scoped to deployment log streams under the existing
+  log group. GitHub Actions post-merge deployment run `42616144276` completed
+  successfully. The full Terraform plan after the IAM fix returned `No changes`;
+  the saved plan was kept outside the repository.
+- The successful deployment rollout reported all 12 Deployments complete,
+  frontend at 2/2 replicas, and all 13 Pods Ready. The journal's current-status
+  snapshot above now reflects this deployment rather than the earlier pre-CI
+  state.
+- Read-only AWS checks on 2026-11-09 found the EKS control plane and node group
+  ACTIVE, three private `c7i-flex.large` workers across two AZs, node-group
+  scaling bounds min 3 / desired 3 / max 6, the existing NAT Gateway available,
+  and the ALB active across both public subnets. The API endpoint allowlist is
+  one `/32`; its address is omitted from Git.
+- The ALB uses an IP target group on port 8080. Both registered frontend targets
+  were `healthy`. The configured Ingress is internet-facing, routes to the
+  `frontend` ClusterIP Service port 80, and checks `/_healthz` over HTTP with
+  success code 200. A live `curl` to `/` returned HTTP 200. The ALB security
+  group allows public TCP/80; worker instances have private IPs. The Kubernetes
+  overlay patches upstream `frontend-external` from `LoadBalancer` to
+  `ClusterIP`, leaving the ALB Ingress as the public entry point. HTTPS is not
+  configured pending an owner-provided domain and ACM certificate.
+- CI builds upstream images with immutable `$GITHUB_SHA` tags. The deploy
+  workflow passes the matching `workflow_run.head_sha` to CodeBuild, and
+  `configure-ecr-kustomization.py` uses CodeBuild's resolved source SHA as the
+  manifest image tag. This is consistent by construction. The live Pod image
+  references could not be re-read during this review because the workstation
+  could not resolve the EKS API hostname.
+- There is one image build per successful main push, and CodeBuild applies the
+  manifests without rebuilding the application. However, the build job runs on
+  every main push, including docs-only changes; each successful CI run also
+  starts a deployment. This is avoidable repeated work and should be narrowed
+  with change detection while keeping tests active for documentation changes.
+- The pinned upstream v0.10.7 release manifest defines readiness/liveness probes
+  and container requests/limits for the application workloads. The AWS overlay
+  sets two frontend replicas with zone spread and includes a frontend PDB
+  (`minAvailable: 1`). No HPA or autoscaler controller is configured in the
+  repository; the node group only has static min/desired/max capacity settings.
+  The pipeline waits for `kubectl rollout status` and fails on a failed rollout,
+  but it does not automatically roll back. A reviewed rollback procedure should
+  use the last known-good Deployment revision or a controlled revert and then
+  verify frontend health and ALB targets.
+- Current billable resource classes include the EKS control plane, three EC2
+  workers and their EBS volumes, NAT Gateway and processed traffic, ALB/LCUs and
+  public IPv4 addresses, plus CloudWatch log ingestion/storage and ECR image
+  storage. This review did not query the billing APIs or calculate a new cost
+  estimate.
+- A fresh `kubectl` read attempt failed because the workstation's resolver could
+  not resolve the EKS API hostname. No Kubernetes writes or AWS resource changes
+  were made. AWS target health and the external HTTP check still confirmed the
+  frontend was serving traffic at review time.
