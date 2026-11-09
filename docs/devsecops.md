@@ -48,3 +48,12 @@ The image scan and SBOM generation require an authenticated ECR image tagged wit
 - Gitleaks scans the DevOps repository history, not history inside the upstream submodule.
 - The Trivy threshold is HIGH/CRITICAL and ignores unfixed issues. Review the scan result and update dependencies rather than treating this threshold as proof of zero risk.
 - GitHub Actions job logs do not display the Gitleaks full-history findings. This protects secret values but means maintainers must reproduce the redacted local scan to identify the finding path/rule.
+
+
+## Initial GitHub Actions results (PR #11)
+
+Workflow run `42659088680` completed with Gitleaks passing, including the event scan, full reachable-history scan, and synthetic detection/redaction check. The Trivy filesystem dependency scan failed on actionable HIGH/CRITICAL advisories in the pinned Google source tree. Examples in its report include `golang.org/x/net` CVEs `CVE-2026-78661` and `CVE-2026-78669`, `protobufjs` `CVE-2026-41242`, and Python package findings. These are source-tree findings; PR runs do not build/push ECR images, so the image scan and SBOM job did not run. The Google submodule is already pinned to upstream's latest commit (`c7cb6d5`, 2026-10-27); no upstream fix was available at the time of this check. The gate remains enabled. Do not lower severity or add blanket ignores; update the upstream pin when Google publishes a reviewed fix, then rerun the image scan.
+
+Checkov's full Terraform scan also failed on the existing baseline (88 passed, 15 failed). Reported controls span CodeBuild IAM/network egress, CloudWatch log encryption/retention, ECR encryption, Terraform source pinning, and backend S3 controls. The findings predate PR #11 and no Terraform file is changed by that PR. They are not waived or soft-failed; the baseline needs a separately reviewed remediation before the full scan can pass.
+
+The existing application test workflow run `42659088572` passed its Go tests, .NET cart-service tests, and AWS Kustomize validation. PR #11 remains unmerged; no AWS or Kubernetes resources were changed for this security implementation.

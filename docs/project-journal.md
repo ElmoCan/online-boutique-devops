@@ -337,3 +337,13 @@ Safety decisions carried through the work:
   reachability still need validation. No AWS or Kubernetes resources were
   changed.
 - Full details and local commands are in [DevSecOps checks](devsecops.md).
+
+
+### 12. Live-state and DevSecOps check results (2026-11-09)
+
+- Read-only AWS inspection succeeded with the `devops-practice` profile in `us-east-1`. EKS `online-boutique-dev` is ACTIVE on Kubernetes 1.36; its managed group is ACTIVE with three `c7i-flex.large` nodes at min/desired/max 3/3/6. A temporary kubeconfig was created under `/tmp` for inspection and removed afterward; the saved user kubeconfig and OrbStack context were not changed.
+- All three EKS nodes were Ready with private addresses and no external IP. All 13 Online Boutique pods were Running/Ready, including two frontend replicas; the 12 application Services were ClusterIP. The existing frontend Ingress still resolved to the public HTTP ALB, and a live request to `/` returned HTTP 200. No Kubernetes or AWS resources were changed.
+- No `monitoring` namespace, Metrics API, or HPA exists in the live cluster. The only reported StorageClass is `gp2` (AWS EBS CSI); no PVC or monitoring workload was installed. HPA preparation therefore needs a Metrics Server component, and persistent monitoring/database volumes must be reviewed before deployment.
+- PR #11 validation: application workflow `42659088572` passed Go, .NET cart-service, and Kustomize checks. Security workflow `42659088680` passed Gitleaks, including full reachable history and its ephemeral redaction test. Trivy dependency scanning failed on HIGH/CRITICAL advisories in the pinned upstream source; Checkov failed on 15 findings in the pre-existing Terraform baseline (88 checks passed). Neither gate was weakened. The latest upstream commit check returned the pinned `c7cb6d5` (2026-10-27), so there was no newer source commit to use for a quick vulnerability fix.
+- The upstream cart service selects Redis or Google Spanner; its source has no MySQL client path. Adding a MySQL StatefulSet would leave it unused unless the Google application is forked and modified, which conflicts with keeping the upstream source intact. The existing Redis deployment remains the appropriate cart database.
+- PR #11 remains open and unmerged. The image scan/SBOM job is configured for main-branch ECR images, but was skipped on the PR because no image build/push runs on a PR.
