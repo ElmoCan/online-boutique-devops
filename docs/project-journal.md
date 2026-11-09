@@ -124,3 +124,103 @@ Safety decisions carried through the work:
 - [Local Kubernetes deployment commit](https://github.com/ElmoCan/online-boutique-devops/commit/2b9644f)
 - [Local monitoring PR #2](https://github.com/ElmoCan/online-boutique-devops/pull/2)
 - [AWS VPC preparation PR #3](https://github.com/ElmoCan/online-boutique-devops/pull/3)
+
+### 6. AWS Milestone 5: ALB Ingress preparation (2026-11-08)
+
+- Read-only AWS checks confirmed the `online-boutique-dev` EKS control plane is
+  ACTIVE on Kubernetes 1.36, the managed node group is ACTIVE with three
+  healthy `c7i-flex.large` EC2 instances, and the two public ALB subnets have
+  the required discovery tags and Internet Gateway route. Nodes remain in the
+  two private subnets with public IP assignment disabled and use the existing
+  single NAT Gateway for egress.
+- The local workstation could not reach the EKS Kubernetes API because its
+  current egress address is outside the API endpoint's restricted `/32`.
+  Therefore application Services, pods, Kubernetes node readiness, and any
+  current Ingress could not be verified live. No EKS endpoint CIDR was changed.
+- The public upstream Online Boutique v0.10.7 release manifest contains both
+  `frontend` (`ClusterIP`) and `frontend-external` (`LoadBalancer`). A new
+  Kustomize overlay keeps the latter private, adds an IP-target ALB Ingress,
+  sets two frontend replicas with zone/host spread, and adds a frontend PDB.
+  The upstream source remains unchanged.
+- AWS Load Balancer Controller chart/controller v3.6.2 and an ALB-focused
+  subset of its version-matched IAM policy were prepared for an IRSA-only role.
+  The subset removes unused WAF, Shield, Cognito, and legacy IAM certificate
+  actions. The role trust is
+  restricted to the EKS OIDC provider, audience `sts.amazonaws.com`, and the
+  `kube-system/aws-load-balancer-controller` ServiceAccount. No permissions
+  were added to worker nodes or GitHub Actions.
+- The live GitHub Actions trust still uses the old name-based `sub`; the local
+  Terraform configuration now prepares the official immutable GitHub subject
+  using owner ID `135598223` and repository ID `1450199615`, restricted to
+  `main`. The existing role audience is already `sts.amazonaws.com`; the live
+  trust remains unchanged until reviewed Terraform is applied.
+- Read-only Route 53 and ACM queries returned no hosted zones or certificates
+  in `us-east-1`. Ingress preparation is HTTP-only; HTTPS redirect remains
+  pending a domain controlled by the project owner and a validated ACM public
+  certificate.
+- The account's Free Tier usage endpoint is readable, but the installed AWS
+  CLI does not expose the account-plan-state operation. Free-plan eligibility
+  and credit balance remain unverified. No ALB cost is assumed to be free.
+- No EKS managed add-ons were returned by `aws eks list-addons`. The worker role
+  includes the VPC CNI policy, but the live `aws-node` DaemonSet and Pod IP
+  behavior still need verification because the EKS Kubernetes API is outside
+  the workstation's current allowed `/32`.
+- Local validation passed Terraform formatting, `terraform validate`, Kustomize
+  rendering (37 objects, all 12 Services ClusterIP), and AWS IAM Access
+  Analyzer validation of the controller policy (no findings). Helm is not
+  installed, so chart rendering was not run. Access Analyzer in this account
+  rejected `TRUST_POLICY` as an unsupported policy type; the proposed trust
+  document was checked as parsed JSON with the exact audience and ServiceAccount
+  subject. Terraform state and saved plans were preserved.
+- Local preparation is documented in
+  [AWS Milestone 5](aws-milestone-5-alb-ingress.md). No AWS resource, ALB,
+  controller, or Kubernetes object was created. No plan was generated/applied,
+  and no changes were pushed or merged.
+
+### 7. AWS learning environment shutdown (2026-11-09)
+
+- Verified `aws sts get-caller-identity --profile devops-practice` as account
+  `471623014584` in `us-east-1`. The first Terraform refresh used the machine's
+  default AWS identity instead of this profile and was denied on IAM OIDC reads;
+  no plan was produced from that attempt. Set `AWS_PROFILE=devops-practice` for
+  the subsequent Terraform plan/apply and confirmed Terraform's caller was the
+  verified project account.
+- Refreshed a full, untargeted destroy plan from the local Terraform state using
+  the live EKS 1.36 version and current endpoint CIDR. Plan was complete and
+  applyable: 61 deletes, zero additions, zero changes, zero drift. It targeted
+  only the Online Boutique VPC (`vpc-0ca73856f4cd0179f`), EKS cluster
+  `online-boutique-dev`, node group, project IAM/OIDC, KMS, CloudWatch, ECR and
+  associated networking resources. It contained no ALB/load balancer, no AWS
+  Load Balancer Controller resources, and no account default VPC. The project's
+  GitHub OIDC provider was trusted by only the project GitHub Actions role.
+- Before apply, copied both exact Terraform state files to the restricted local
+  archive directory
+  `/Users/yusufchoudhari/Documents/Codex/.online-boutique-state-preserved.vatF1o`
+  (directory mode 0700; files mode 0600). The original pre-destroy state SHA256
+  is `12d653663b50b51a85c9e50167e3e13f94815a4796e1ea964c3425535adbf499`; the
+  prior backup SHA256 is
+  `535e8c4ba10af7b83ed1a9ac024caa4b3f1f48f104e9e63074c0847ecda1e3ef`.
+- Applied the reviewed saved plan. Terraform completed successfully with 0
+  additions, 0 changes and 61 deletions. EKS node group deletion took about
+  eight minutes; the EKS control plane then completed deletion. The NAT
+  Gateway and EIP, project VPC/subnets/routes/Internet Gateway, ECR repository,
+  project IAM roles/policies/OIDC providers, EKS security groups, and EKS
+  CloudWatch log group were removed.
+- Post-destroy checks confirmed there are no EKS clusters, no project VPC (the
+  account default VPC remains), no ALB/NLB, no ECR repository, no project IAM
+  roles/OIDC providers, no project log group, no EIP allocation, and no active
+  NAT Gateway. All three worker instances are terminated; their three 20 GiB
+  root volumes, node ENIs and project security groups are absent. A tag-index
+  query briefly continued to return stale deleted-resource entries, so direct
+  service lookups by resource IDs were used to verify deletion.
+- The customer-managed KMS key is `PendingDeletion` until 2026-12-09. The
+  project S3 bucket `devops-endpoint-lab-12` was not in Terraform state and was
+  deliberately left untouched; it may continue to incur storage/request
+  charges. Service-linked roles and unrelated account resources were not
+  deleted. No public load balancer existed or was created.
+- Terraform now has an empty local state (zero managed objects); its backup
+  contains the pre-destroy state. The exact prior state and backup remain in
+  the protected archive above. Repository source, upstream application files,
+  manifests, documentation and all pre-existing uncommitted Milestone 5 changes
+  were preserved. Nothing was committed or pushed. The saved applied plan and
+  its readable report remain outside Git under `/private/tmp/ob-dev-destroy.vvjjsd/`.
